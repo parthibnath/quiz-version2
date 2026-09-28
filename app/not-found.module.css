@@ -1,0 +1,12 @@
+.card {
+  max-width: 600px;
+  text-align: center;
+  margin-top: var(--space-48);
+}
+
+.subtitle {
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--black);
+  margin-bottom: var(--space-24);
+}

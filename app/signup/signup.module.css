@@ -1,0 +1,39 @@
+.mainContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: calc(100vh - 120px);
+}
+
+.cardWrapper {
+  width: 100%;
+  max-width: 480px;
+}
+
+.errorBox {
+  background-color: var(--accent-magenta);
+  color: var(--white);
+  border: var(--border);
+  border-radius: var(--border-radius);
+  padding: var(--space-12) var(--space-16);
+  font-weight: 700;
+  margin-bottom: var(--space-16);
+  text-transform: uppercase;
+}
+
+.submitBtn {
+  width: 100%;
+  margin-top: var(--space-8);
+}
+
+.footerLink {
+  margin-top: var(--space-24);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.link {
+  text-decoration: underline;
+  color: var(--black);
+}

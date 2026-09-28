@@ -1,0 +1,176 @@
+.header {
+  margin-bottom: var(--space-24);
+}
+
+.scoreCard {
+  margin-bottom: var(--space-48);
+}
+
+.scoreRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-16);
+  margin-bottom: var(--space-16);
+}
+
+.scoreLabel {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.scoreBig {
+  font-size: clamp(48px, 7vw, 84px);
+  font-weight: 900;
+  line-height: 1;
+}
+
+.scorePercent {
+  font-size: 20px;
+  font-weight: 900;
+  margin-top: var(--space-4);
+}
+
+.summaryBadge {
+  font-size: 14px;
+  font-weight: 900;
+  text-transform: uppercase;
+  background-color: var(--black);
+  color: var(--white);
+  padding: var(--space-8) var(--space-16);
+  border-radius: var(--border-radius);
+}
+
+.summaryText {
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: var(--space-24);
+}
+
+.actionsGroup {
+  display: flex;
+  gap: var(--space-16);
+  flex-wrap: wrap;
+}
+
+.breakdownHeader {
+  margin-bottom: var(--space-24);
+}
+
+.perfectScoreCard {
+  padding: var(--space-32);
+}
+
+.incorrectGrid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-24);
+}
+
+.incorrectCard {
+  border-left: 6px solid var(--accent-magenta);
+}
+
+.cardTagRow {
+  margin-bottom: var(--space-8);
+}
+
+.questionTitle {
+  font-size: clamp(18px, 2.5vw, 24px);
+  font-weight: 900;
+  margin-bottom: var(--space-16);
+}
+
+.choiceBoxUser {
+  background-color: var(--white);
+  border: var(--border);
+  border-color: var(--accent-magenta);
+  border-radius: var(--border-radius);
+  padding: var(--space-12) var(--space-16);
+  margin-bottom: var(--space-12);
+}
+
+.choiceBadgeUser {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background-color: var(--accent-magenta);
+  color: var(--white);
+  padding: var(--space-4) var(--space-8);
+  border-radius: var(--border-radius);
+  margin-bottom: var(--space-4);
+}
+
+.choiceBoxCorrect {
+  background-color: var(--white);
+  border: var(--border);
+  border-color: var(--accent-green);
+  border-radius: var(--border-radius);
+  padding: var(--space-12) var(--space-16);
+  margin-bottom: var(--space-16);
+}
+
+.choiceBadgeCorrect {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background-color: var(--accent-green);
+  color: var(--black);
+  padding: var(--space-4) var(--space-8);
+  border-radius: var(--border-radius);
+  margin-bottom: var(--space-4);
+}
+
+.choiceText {
+  font-weight: 700;
+}
+
+.explanationSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  background-color: var(--white);
+  border: var(--border);
+  border-radius: var(--border-radius);
+  padding: var(--space-16);
+}
+
+.expBlock strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: var(--space-4);
+  color: var(--black);
+}
+
+.expBlock p {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.loadingCard {
+  text-align: center;
+  padding: var(--space-48);
+}
+
+.spinnerBar {
+  height: 12px;
+  background-color: var(--black);
+  border-radius: 2px;
+  margin: var(--space-24) 0;
+  animation: pulse 1s infinite alternate;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.3; transform: scaleX(0.8); }
+  100% { opacity: 1; transform: scaleX(1); }
+}

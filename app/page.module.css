@@ -1,0 +1,220 @@
+.heroContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: var(--space-48) 0 var(--space-64);
+}
+
+.stickerBadge {
+  display: inline-block;
+  background-color: var(--accent-yellow);
+  color: var(--black);
+  border: var(--border);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+  padding: var(--space-8) var(--space-16);
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  transform: rotate(-4deg);
+  margin-bottom: var(--space-24);
+}
+
+.heroTitle {
+  font-family: var(--font-display);
+  font-size: clamp(40px, 6vw, 72px);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: -0.03em;
+  color: var(--black);
+  line-height: 1.1;
+  margin-bottom: var(--space-24);
+  max-width: 900px;
+}
+
+.heroSubtitle {
+  font-size: clamp(18px, 2.5vw, 22px);
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-color);
+  max-width: 760px;
+  margin-bottom: var(--space-32);
+}
+
+.heroCtas {
+  display: flex;
+  gap: var(--space-16);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.heroBadges {
+  display: flex;
+  gap: var(--space-12);
+  flex-wrap: wrap;
+  margin-top: var(--space-32);
+}
+
+.heroBadgeItem {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background-color: var(--white);
+  border: var(--border);
+  border-radius: var(--border-radius);
+  padding: var(--space-4) var(--space-12);
+  box-shadow: 3px 3px 0 var(--black);
+}
+
+/* Marquee Ticker Strip */
+.marqueeWrapper {
+  width: 100vw;
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+  overflow: hidden;
+  background-color: var(--accent-yellow);
+  border-top: var(--border);
+  border-bottom: var(--border);
+  padding: var(--space-12) 0;
+  margin-top: var(--space-32);
+  margin-bottom: var(--space-64);
+}
+
+.marqueeTrack {
+  display: flex;
+  width: max-content;
+  animation: marquee 30s linear infinite;
+}
+
+.marqueeContent {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--black);
+  white-space: nowrap;
+}
+
+@keyframes marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marqueeTrack {
+    animation: none;
+  }
+}
+
+/* Feature Bento Grid */
+.sectionHeader {
+  margin-bottom: var(--space-32);
+}
+
+.bentoGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-24);
+  margin-bottom: var(--space-64);
+}
+
+.bentoCard {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+}
+
+.bentoTag {
+  margin-top: var(--space-24);
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background-color: var(--black);
+  color: var(--white);
+  padding: var(--space-4) var(--space-12);
+  border-radius: var(--border-radius);
+}
+
+/* Why It Works Sticker Section */
+.stickersGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-24);
+  margin-bottom: var(--space-64);
+}
+
+.stickerCard1 {
+  transform: rotate(-1.5deg);
+}
+
+.stickerCard2 {
+  transform: rotate(1.5deg);
+}
+
+.stickerCard3 {
+  transform: rotate(-1deg);
+}
+
+.stickerCard4 {
+  transform: rotate(2deg);
+}
+
+/* Final CTA Section */
+.finalCtaCard {
+  text-align: center;
+  padding: var(--space-48) var(--space-24);
+  margin-bottom: var(--space-48);
+}
+
+.finalCtaSubtitle {
+  font-size: 18px;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-top: var(--space-8);
+  margin-bottom: var(--space-24);
+}
+
+/* Responsive Overrides */
+@media (max-width: 900px) {
+  .bentoGrid {
+    grid-template-columns: 1fr;
+  }
+  .stickersGrid {
+    grid-template-columns: 1fr;
+  }
+  .stickerCard1,
+  .stickerCard2,
+  .stickerCard3,
+  .stickerCard4 {
+    transform: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .heroContainer {
+    padding: var(--space-32) 0 var(--space-48);
+  }
+  .heroCtas {
+    flex-direction: column;
+    width: 100%;
+  }
+  .heroCtas a {
+    width: 100%;
+  }
+  .heroCtas button {
+    width: 100%;
+  }
+}
