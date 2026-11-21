@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, use } from "react";
-import { Navbar } from "@/components/Navbar";
+import React, { useState, useEffect, useRef, use } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { SectionTag } from "@/components/SectionTag";
@@ -37,6 +36,9 @@ export default function SessionPlayerPage({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userAnswers, setUserAnswers] = useState<Record<string, number>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const pendingSaves = useRef(Promise.resolve());
+  const [saveFailed, setSaveFailed] = useState(false);
+  const [saving, setSaving] = useState(0);
 
   useEffect(() => {
     document.title = `Session ${sessionData?.sessionNumber || "..."} — MCQ Platform`;
@@ -49,7 +51,7 @@ export default function SessionPlayerPage({
   // Keyboard accessibility: 1..4 selects option, Left/Right arrow navigates
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isSubmitting || !sessionData) return;
+      if (isSubmitting || !sessionData || e.altKey || e.ctrlKey || e.metaKey) return;
       const currentQ = sessionData.questions[currentIndex];
       if (!currentQ) return;
 
@@ -82,6 +84,10 @@ export default function SessionPlayerPage({
         throw new Error(data.error || "FAILED TO LOAD SESSION.");
       }
 
+      if (data.status === "completed") {
+        router.replace(`/results/${sessionId}`);
+        return;
+      }
       setSessionData({
         sessionId: data.sessionId,
         sessionNumber: data.sessionNumber,
@@ -91,30 +97,36 @@ export default function SessionPlayerPage({
       });
 
       setUserAnswers(data.savedAnswers || {});
-    } catch (err: any) {
-      setError(err.message || "COULD NOT FETCH SESSION DATA.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "COULD NOT FETCH SESSION DATA.");
     } finally {
       setLoading(false);
     }
   };
 
   const selectOption = (questionId: string, optionIndex: number) => {
-    setUserAnswers((prev) => ({
-      ...prev,
-      [questionId]: optionIndex,
-    }));
+    if (isSubmitting) return;
+    setUserAnswers((previous) => ({ ...previous, [questionId]: optionIndex }));
+    setSaving((count) => count + 1);
+    pendingSaves.current = pendingSaves.current.then(async () => {
+      try {
+        const response = await fetch(`/api/sessions/${sessionId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questionId, choice: optionIndex }),
+          keepalive: true,
+        });
+        if (!response.ok) throw new Error("Could not save answer");
+      } catch {
+        setSaveFailed(true);
+      } finally {
+        setSaving((count) => count - 1);
+      }
+    });
   };
 
   const handleSubmitSession = async () => {
-    if (!sessionData) return;
-
-    const answeredCount = Object.keys(userAnswers).length;
-    if (answeredCount < sessionData.total) {
-      const confirmSubmit = window.confirm(
-        `YOU HAVE ANSWERED ${answeredCount} OF ${sessionData.total} QUESTIONS. ARE YOU SURE YOU WANT TO SUBMIT NOW?`
-      );
-      if (!confirmSubmit) return;
-    }
+    if (!sessionData || isSubmitting || Object.keys(userAnswers).length !== sessionData.total) return;
 
     setIsSubmitting(true);
     setError(null);
@@ -132,11 +144,9 @@ export default function SessionPlayerPage({
         throw new Error(data.error || "FAILED TO SUBMIT SESSION.");
       }
 
-      // Store results in sessionStorage for immediate rendering on results page
-      sessionStorage.setItem(`session_results_${sessionId}`, JSON.stringify(data));
       router.push(`/results/${sessionId}`);
-    } catch (err: any) {
-      setError(err.message || "FAILED TO SUBMIT QUIZ ANSWERS.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "FAILED TO SUBMIT QUIZ ANSWERS.");
       setIsSubmitting(false);
     }
   };
@@ -144,7 +154,6 @@ export default function SessionPlayerPage({
   if (loading) {
     return (
       <>
-        <Navbar />
         <main>
           <Card accent="yellow" className={styles.loadingCard}>
             <SectionTag>LOADING QUIZ SESSION</SectionTag>
@@ -156,12 +165,11 @@ export default function SessionPlayerPage({
     );
   }
 
-  if (error || !sessionData || !sessionData.questions || sessionData.questions.length === 0) {
+  if (!sessionData || !sessionData.questions.length) {
     return (
       <>
-        <Navbar />
         <main>
-          <div className={styles.errorBox}>
+          <div className={styles.errorBox} role="alert">
             <p>⚠ {error || "NO QUESTIONS AVAILABLE IN THIS SESSION."}</p>
             <Button variant="dark" onClick={() => router.push("/dashboard")} style={{ marginTop: "12px" }}>
               RETURN TO DASHBOARD
@@ -175,13 +183,12 @@ export default function SessionPlayerPage({
   const currentQuestion = sessionData.questions[currentIndex] || sessionData.questions[0];
   const selectedOption = currentQuestion ? userAnswers[currentQuestion.id] : undefined;
   const progressPercent = Math.round(
-    ((currentIndex + 1) / sessionData.total) * 100
+    (Object.keys(userAnswers).length / sessionData.total) * 100
   );
   const answeredCount = Object.keys(userAnswers).length;
 
   return (
     <>
-      <Navbar />
       <main>
         {/* Header Bar */}
         <div className={styles.headerBar}>
@@ -196,6 +203,7 @@ export default function SessionPlayerPage({
 
           <div className={styles.progressStat} aria-live="polite">
             <span>ANSWERED: {answeredCount} / {sessionData.total}</span>
+            {saving > 0 && <span> · SAVING DRAFT…</span>}
           </div>
         </div>
 
@@ -206,6 +214,9 @@ export default function SessionPlayerPage({
             style={{ width: `${progressPercent}%` }}
           ></div>
         </div>
+
+        {error && <p className={styles.errorBox} role="alert">⚠ {error}</p>}
+        {saveFailed && <p className={styles.errorBox} role="status">⚠ Some draft answers could not be saved. Keep this page open until you submit, or select the affected answers again.</p>}
 
         {/* Main Quiz Question Card */}
         <Card className={styles.questionCard}>
@@ -225,6 +236,8 @@ export default function SessionPlayerPage({
                   className={`${styles.optionBtn} ${
                     isSelected ? styles.optionSelected : ""
                   }`}
+                  aria-pressed={isSelected}
+                  disabled={isSubmitting}
                   onClick={() => selectOption(currentQuestion.id, optIdx)}
                 >
                   <span className={styles.optionBadge}>{optionLetter}</span>
@@ -249,12 +262,20 @@ export default function SessionPlayerPage({
               ⬅ PREVIOUS
             </Button>
 
-            {currentIndex < sessionData.total - 1 ? (
+            {currentIndex < sessionData.total - 1 && (
               <Button
                 variant="primary"
                 onClick={() => setCurrentIndex((prev) => prev + 1)}
               >
                 NEXT ➔
+              </Button>
+            )}
+            {answeredCount < sessionData.total ? (
+              <Button variant="outline" onClick={() => {
+                const next = sessionData.questions.findIndex((question) => userAnswers[question.id] === undefined);
+                if (next >= 0) setCurrentIndex(next);
+              }}>
+                FIND UNANSWERED
               </Button>
             ) : (
               <Button

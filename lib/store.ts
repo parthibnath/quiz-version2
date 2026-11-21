@@ -1,58 +1,163 @@
-import crypto from "crypto";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { ApiError } from "./api";
+import { createSupabaseAdminClient } from "./supabase/admin";
 
-function throwStoreError(error: unknown): never {
-  const supabaseError = error as { code?: string; message?: string };
-  if (supabaseError.code === "PGRST205") {
-    throw new Error(
-      "Supabase database schema is not initialized. Run supabase/schema.sql in the Supabase SQL Editor.",
-    );
+export type FileType = "pdf" | "image" | "text" | "camera";
+
+type UploadRow = {
+  id: string;
+  file_name: string;
+  file_type: FileType;
+  extracted_text: string;
+};
+
+type HistoryEntry = {
+  sessionNumber: number;
+  score: number;
+  total: number;
+  completedAt: string;
+  sessionId?: string;
+};
+
+type ProfileRow = {
+  display_name: string | null;
+  cumulative_score: number;
+  sessions_completed: number[];
+  session_11_completed: boolean;
+  session_history: HistoryEntry[];
+};
+
+export type PublicQuestion = { id: string; question_text: string; options: string[] };
+
+export type SessionRow = {
+  id: string;
+  session_number: number;
+  question_ids: string[];
+  user_answers: Record<string, number>;
+  status: "in_progress" | "completed";
+  score: number;
+  total: number;
+  incorrect_list: unknown[] | null;
+};
+
+function handleDatabaseError(error: { message: string; code?: string }): never {
+  switch (error.message) {
+    case "SESSION_LOCKED":
+      throw new ApiError(403, "Complete the previous sessions to unlock this session.");
+    case "INSUFFICIENT_QUESTIONS":
+      throw new ApiError(409, "Your bank needs more unique questions for this session. Generate more from your notes or add new study material.");
+    case "SESSION_NOT_FOUND":
+    case "UPLOAD_NOT_FOUND":
+      throw new ApiError(404, "This item could not be found.");
+    case "INVALID_ANSWERS":
+      throw new ApiError(400, "Answer every question with a valid option before submitting.");
+    default:
+      throw new Error(`Supabase request failed (${error.code ?? "unknown"}): ${error.message}`);
   }
-  throw new Error(
-    supabaseError.message || "Supabase database request failed.",
-  );
 }
 
-export interface QuestionItem { id: string; userId: string; uploadId: string; questionText: string; options: [string, string, string, string]; correctIndex: number; explanation: string; createdAt: string; }
-export interface UploadItem { id: string; userId: string; fileName: string; fileType: "pdf" | "image" | "text" | "camera"; extractedText: string; status: "done" | "failed"; createdAt: string; }
-export interface IncorrectReviewItem { questionId: string; questionText: string; userChoiceIndex: number; userChoiceText: string; correctChoiceIndex: number; correctChoiceText: string; explanation: string; whyUserWasWrong: string; }
-export interface UserProfile { cumulativeScore: number; sessionsCompleted: number[]; session11Completed: boolean; sessionHistory: Array<{ sessionNumber: number; score: number; total: number; completedAt: string }>; }
-export interface User { id: string; email: string; passwordHash: string; name: string; createdAt: string; profile: UserProfile; }
-export interface SessionItem { id: string; userId: string; sessionNumber: number; questionIds: string[]; userAnswers: Record<string, number>; status: "in_progress" | "completed"; score: number; total: number; createdAt: string; completedAt?: string; incorrectList?: IncorrectReviewItem[]; }
-
-const mapUser = (row: any): User | null => row ? ({ id: row.id, email: row.email, passwordHash: "", name: row.display_name || row.email, createdAt: row.created_at, profile: { cumulativeScore: row.cumulative_score, sessionsCompleted: row.sessions_completed || [], session11Completed: row.session_11_completed, sessionHistory: row.session_history || [] } }) : null;
-const mapUpload = (row: any): UploadItem => ({ id: row.id, userId: row.user_id, fileName: row.file_name, fileType: row.file_type, extractedText: row.extracted_text, status: row.status, createdAt: row.created_at });
-const mapQuestion = (row: any): QuestionItem => ({ id: row.id, userId: row.user_id, uploadId: row.upload_id, questionText: row.question_text, options: row.options, correctIndex: row.correct_index, explanation: row.explanation, createdAt: row.created_at });
-const mapSession = (row: any): SessionItem => ({ id: row.id, userId: row.user_id, sessionNumber: row.session_number, questionIds: row.question_ids, userAnswers: row.user_answers || {}, status: row.status, score: row.score, total: row.total, createdAt: row.created_at, completedAt: row.completed_at || undefined, incorrectList: row.incorrect_list || undefined });
-
-export function hashPassword(password: string): string { const salt = crypto.randomBytes(16).toString("hex"); return `${salt}:${crypto.scryptSync(password, salt, 64).toString("hex")}`; }
-export function verifyPassword(): boolean { return false; }
-
-export async function findUserByEmail(email: string): Promise<User | null> {
-  const { data, error } = await createSupabaseAdminClient().from("profiles").select("*").eq("id", email).maybeSingle();
-  if (error) throwStoreError(error);
-  return mapUser(data);
+export async function checkDatabase() {
+  const { error } = await createSupabaseAdminClient().from("sessions").select("id").limit(1);
+  if (error) handleDatabaseError(error);
 }
-export async function findUserById(id: string): Promise<User | null> {
-  const { data, error } = await createSupabaseAdminClient().from("profiles").select("*").eq("id", id).maybeSingle();
-  if (error) throwStoreError(error);
-  return mapUser(data);
-}
-export async function createUser(): Promise<never> { throw new Error("Create users through Supabase Auth."); }
 
-export async function createUpload(userId: string, fileName: string, fileType: UploadItem["fileType"], extractedText: string, status: UploadItem["status"] = "done"): Promise<UploadItem> {
-  const { data, error } = await createSupabaseAdminClient().from("uploads").insert({ user_id: userId, file_name: fileName, file_type: fileType, extracted_text: extractedText, status }).select().single();
-  if (error) throw error;
-  return mapUpload(data);
+export async function createUpload(userId: string, fileName: string, fileType: FileType, text: string) {
+  const { data, error } = await createSupabaseAdminClient().from("uploads")
+    .insert({ user_id: userId, file_name: fileName, file_type: fileType, extracted_text: text, status: "done" })
+    .select("id,file_name,file_type,extracted_text").single<UploadRow>();
+  if (error) handleDatabaseError(error);
+  return data;
 }
-export async function getUploadsByUserId(userId: string): Promise<UploadItem[]> { const { data, error } = await createSupabaseAdminClient().from("uploads").select("*").eq("user_id", userId).order("created_at", { ascending: false }); if (error) throw error; return (data || []).map(mapUpload); }
-export async function getUploadById(id: string): Promise<UploadItem | null> { const { data, error } = await createSupabaseAdminClient().from("uploads").select("*").eq("id", id).maybeSingle(); if (error) throw error; return data ? mapUpload(data) : null; }
-export async function saveQuestions(items: Array<Omit<QuestionItem, "id" | "createdAt">>): Promise<QuestionItem[]> { const rows = items.filter((item) => item.options.length === 4 && Number.isInteger(item.correctIndex) && item.correctIndex >= 0 && item.correctIndex <= 3 && item.questionText.trim() && item.explanation.trim()).map((item) => ({ user_id: item.userId, upload_id: item.uploadId, question_text: item.questionText.trim(), options: item.options.map((option) => option.trim()), correct_index: item.correctIndex, explanation: item.explanation.trim() })); if (!rows.length) return []; const { data, error } = await createSupabaseAdminClient().from("questions").insert(rows).select(); if (error) throw error; return (data || []).map(mapQuestion); }
-export async function getQuestionsByUserId(userId: string): Promise<QuestionItem[]> { const { data, error } = await createSupabaseAdminClient().from("questions").select("*").eq("user_id", userId); if (error) throw error; return (data || []).map(mapQuestion); }
-export async function getQuestionById(id: string): Promise<QuestionItem | null> { const { data, error } = await createSupabaseAdminClient().from("questions").select("*").eq("id", id).maybeSingle(); if (error) throw error; return data ? mapQuestion(data) : null; }
 
-export function isSessionUnlocked(user: User, number: number): boolean { if (number === 1) return true; const completed = new Set(user.profile.sessionsCompleted); return number === 11 ? Array.from({ length: 10 }, (_, i) => i + 1).every((n) => completed.has(n)) : completed.has(number - 1); }
-export async function createSession(userId: string, sessionNumber: number): Promise<SessionItem> { const user = await findUserById(userId); if (!user) throw new Error("User not found"); if (!isSessionUnlocked(user, sessionNumber)) throw new Error("SESSION IS LOCKED."); const total = sessionNumber === 11 ? 100 : 50; const pool = await getQuestionsByUserId(userId); if (pool.length < total) throw new Error(`NOT ENOUGH VALID QUESTIONS. THIS SESSION REQUIRES ${total}, BUT YOUR QUESTION BANK HAS ${pool.length}.`); const questionIds = pool.sort(() => 0.5 - Math.random()).slice(0, total).map((q) => q.id); const { data, error } = await createSupabaseAdminClient().from("sessions").insert({ user_id: userId, session_number: sessionNumber, question_ids: questionIds, total, status: "in_progress" }).select().single(); if (error) throw error; return mapSession(data); }
-export async function getSessionById(id: string): Promise<SessionItem | null> { const { data, error } = await createSupabaseAdminClient().from("sessions").select("*").eq("id", id).maybeSingle(); if (error) throw error; return data ? mapSession(data) : null; }
-export async function submitSessionAnswers(id: string, answers: Record<string, number>) { const session = await getSessionById(id); if (!session) throw new Error("Session not found"); if (session.status === "completed") return { session, score: session.score, total: session.total, incorrectList: session.incorrectList || [] }; const questions = (await Promise.all(session.questionIds.map(getQuestionById))).filter((q): q is QuestionItem => q !== null); if (questions.length !== session.total) throw new Error("SESSION CONTAINS A MISSING QUESTION."); let score = 0; const incorrectList: IncorrectReviewItem[] = []; for (const question of questions) { const choice = answers[question.id]; if (!Number.isInteger(choice) || choice < 0 || choice > 3) throw new Error("INVALID ANSWER PAYLOAD."); if (choice === question.correctIndex) score++; else incorrectList.push({ questionId: question.id, questionText: question.questionText, userChoiceIndex: choice, userChoiceText: question.options[choice], correctChoiceIndex: question.correctIndex, correctChoiceText: question.options[question.correctIndex], explanation: question.explanation, whyUserWasWrong: question.explanation }); } const completedAt = new Date().toISOString(); const user = await findUserById(session.userId); if (!user) throw new Error("User not found"); const completed = new Set(user.profile.sessionsCompleted); if (session.sessionNumber === 11) user.profile.session11Completed = true; else { completed.add(session.sessionNumber); user.profile.sessionsCompleted = Array.from(completed).sort((a, b) => a - b); } user.profile.cumulativeScore += score; user.profile.sessionHistory.push({ sessionNumber: session.sessionNumber, score, total: session.total, completedAt }); const client = createSupabaseAdminClient(); const { error: profileError } = await client.from("profiles").update({ cumulative_score: user.profile.cumulativeScore, sessions_completed: user.profile.sessionsCompleted, session_11_completed: user.profile.session11Completed, session_history: user.profile.sessionHistory }).eq("id", session.userId); if (profileError) throw profileError; const { error } = await client.from("sessions").update({ user_answers: answers, status: "completed", score, completed_at: completedAt, incorrect_list: incorrectList }).eq("id", id).eq("status", "in_progress"); if (error) throw error; const updated = (await getSessionById(id))!; return { session: updated, score, total: updated.total, incorrectList };
+export async function getUpload(userId: string, id: string) {
+  const { data, error } = await createSupabaseAdminClient().from("uploads")
+    .select("id,file_name,file_type,extracted_text").eq("user_id", userId).eq("id", id)
+    .eq("status", "done").maybeSingle<UploadRow>();
+  if (error) handleDatabaseError(error);
+  return data;
+}
+
+export async function getRecentQuestions(userId: string, uploadId: string) {
+  const { data, error } = await createSupabaseAdminClient().from("questions")
+    .select("question_text").eq("user_id", userId).eq("upload_id", uploadId)
+    .order("created_at", { ascending: false }).limit(150);
+  if (error) handleDatabaseError(error);
+  return data.map((row) => row.question_text as string);
+}
+
+type GeneratedRow = {
+  question: string;
+  options: string[];
+  correct_index: number;
+  explanation: string;
+  option_explanations: string[];
+};
+
+export async function saveQuestions(userId: string, uploadId: string, questions: GeneratedRow[]) {
+  const { data, error } = await createSupabaseAdminClient()
+    .rpc("quiz_add_questions", { p_user: userId, p_upload: uploadId, p_questions: questions });
+  if (error) handleDatabaseError(error);
+  return data as number;
+}
+
+export async function getDashboard(userId: string) {
+  const db = createSupabaseAdminClient();
+  const [profile, uploads, count, active, completed] = await Promise.all([
+    db.from("profiles").select("display_name,cumulative_score,sessions_completed,session_11_completed,session_history")
+      .eq("id", userId).single<ProfileRow>(),
+    db.from("uploads").select("id,file_name").eq("user_id", userId).eq("status", "done")
+      .order("created_at", { ascending: false }).limit(20),
+    db.from("questions").select("id", { count: "exact", head: true }).eq("user_id", userId),
+    db.from("sessions").select("session_number").eq("user_id", userId).eq("status", "in_progress"),
+    db.from("sessions").select("id,session_number,score,total,completed_at").eq("user_id", userId)
+      .eq("status", "completed").order("completed_at", { ascending: false }).limit(10),
+  ]);
+  if (profile.error) handleDatabaseError(profile.error);
+  if (uploads.error) handleDatabaseError(uploads.error);
+  if (count.error) handleDatabaseError(count.error);
+  if (active.error) handleDatabaseError(active.error);
+  if (completed.error) handleDatabaseError(completed.error);
+  return { profile: profile.data, uploads: uploads.data, questionCount: count.count ?? 0, active: active.data, completed: completed.data };
+}
+
+export async function createSession(userId: string, sessionNumber: number) {
+  const { data, error } = await createSupabaseAdminClient()
+    .rpc("quiz_start_session", { p_user: userId, p_number: sessionNumber }).single<SessionRow>();
+  if (error) handleDatabaseError(error);
+  return data;
+}
+
+export async function getSession(userId: string, id: string) {
+  const { data, error } = await createSupabaseAdminClient().from("sessions")
+    .select("id,session_number,question_ids,user_answers,status,score,total,incorrect_list")
+    .eq("user_id", userId).eq("id", id).maybeSingle<SessionRow>();
+  if (error) handleDatabaseError(error);
+  if (!data) throw new ApiError(404, "This session could not be found.");
+  return data;
+}
+
+export async function getSessionQuestions(userId: string, session: SessionRow) {
+  const { data, error } = await createSupabaseAdminClient().from("questions")
+    .select("id,question_text,options").eq("user_id", userId).in("id", session.question_ids)
+    .returns<PublicQuestion[]>();
+  if (error) handleDatabaseError(error);
+  const byId = new Map(data.map((question) => [question.id, question]));
+  return session.question_ids.map((id) => {
+    const question = byId.get(id);
+    if (!question) throw new ApiError(409, "A question is missing from this saved session.");
+    return { id, questionText: question.question_text, options: question.options };
+  });
+}
+
+export async function saveAnswer(userId: string, sessionId: string, questionId: string, choice: number) {
+  const { data, error } = await createSupabaseAdminClient()
+    .rpc("quiz_save_answer", { p_user: userId, p_session: sessionId, p_question: questionId, p_choice: choice });
+  if (error) handleDatabaseError(error);
+  if (!data) throw new ApiError(404, "This question is unavailable in the active session.");
+}
+
+export async function submitSession(userId: string, id: string, answers: unknown) {
+  const { data, error } = await createSupabaseAdminClient()
+    .rpc("quiz_submit_session", { p_user: userId, p_session: id, p_answers: answers }).single<SessionRow>();
+  if (error) handleDatabaseError(error);
+  return data;
 }

@@ -1,67 +1,39 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { getUploadById, findUserById } from "@/lib/store";
-import { processQuestionGeneration } from "@/lib/generator";
+import { requireUser } from "@/auth";
+import { ApiError, apiError, isUuid, readJson } from "@/lib/api";
+import { getUpload, getRecentQuestions, saveQuestions } from "@/lib/store";
+import { createBatches, generateBatch, getProvider } from "@/lib/generator";
 import { enforceRateLimit } from "@/lib/rate-limit";
 
-export async function POST(req: NextRequest) {
-  if (!enforceRateLimit(req, "generate", 5, 60_000)) {
-    return NextResponse.json({ error: "TOO MANY GENERATION REQUESTS. PLEASE TRY AGAIN LATER." }, { status: 429 });
-  }
-  const session = await auth();
+export const maxDuration = 120;
 
-  if (!session || !session.user?.email) {
-    return NextResponse.json(
-      { error: "UNAUTHORIZED ACCESS. PLEASE LOG IN FIRST." },
-      { status: 401 }
-    );
-  }
-
-  const user = await findUserById(session.user.id);
-  if (!user) {
-    return NextResponse.json({ error: "USER NOT FOUND." }, { status: 404 });
-  }
-
+export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { uploadId, count = 50 } = body;
-    const requestedCount = Number(count);
-
-    if (!uploadId || !Number.isInteger(requestedCount)) {
-      return NextResponse.json(
-        { error: "UPLOAD ID IS REQUIRED FOR QUESTION GENERATION." },
-        { status: 400 }
-      );
+    const user = await requireUser();
+    const { uploadId, count = 50 } = await readJson(req);
+    if (!isUuid(uploadId) || typeof count !== "number" || !Number.isInteger(count) || count < 1 || count > 50) {
+      throw new ApiError(400, "Select saved study material and request between 1 and 50 questions.");
     }
+    const upload = await getUpload(user.id, uploadId);
+    if (!upload) throw new ApiError(404, "This study material could not be found.");
+    const provider = getProvider();
+    enforceRateLimit(user.id, "generate", 3);
+    const existing = await getRecentQuestions(user.id, uploadId);
+    const signal = AbortSignal.any([req.signal, AbortSignal.timeout(90_000)]);
+    const batches = await Promise.allSettled(createBatches(upload.extracted_text, count)
+      .map((batch) => generateBatch(provider, batch, existing, signal)));
 
-    const uploadRecord = await getUploadById(uploadId);
-    if (!uploadRecord || uploadRecord.userId !== user.id) {
-      return NextResponse.json(
-        { error: "UPLOAD RECORD NOT FOUND OR UNAUTHORIZED." },
-        { status: 404 }
-      );
-    }
+    const questions = batches.flatMap((batch) => batch.status === "fulfilled" ? batch.value : []);
+    const failed = batches.find((batch) => batch.status === "rejected");
+    if (!questions.length && failed) throw failed.reason;
 
-    const questions = await processQuestionGeneration(
-      user.id,
-      uploadRecord.id,
-      uploadRecord.extractedText,
-      Math.min(Math.max(requestedCount, 10), 100)
-    );
-
-    return NextResponse.json({
-      success: true,
-      uploadId: uploadRecord.id,
-      count: questions.length,
+    const added = questions.length ? await saveQuestions(user.id, uploadId, questions) : 0;
+    return Response.json({
+      success: true, uploadId, count: added,
+      note: failed
+        ? "Some generation batches failed. New questions were saved. You can retry to add more."
+        : added < count ? "Fewer unique questions were available from this run. Try again or use more detailed notes." : null,
     });
-  } catch (err: any) {
-    return NextResponse.json(
-      {
-        error:
-          err?.message ||
-          "FAILED TO GENERATE QUESTIONS FROM UPLOADED MATERIAL.",
-      },
-      { status: 500 }
-    );
+  } catch (error) {
+    return apiError(error);
   }
 }

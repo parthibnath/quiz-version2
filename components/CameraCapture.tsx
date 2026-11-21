@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Button } from "./Button";
 import { SectionTag } from "./SectionTag";
 import styles from "./CameraCapture.module.css";
@@ -12,110 +12,70 @@ interface CameraCaptureProps {
 
 export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("environment");
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
-    startCamera();
-    return () => {
-      stopCamera();
-    };
-  }, [facingMode]);
-
-  const startCamera = async () => {
+    let active = true;
+    let stream: MediaStream | undefined;
+    setReady(false);
     setError(null);
-    try {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+    async function start() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode }, audio: false });
+        if (!active) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        if (videoRef.current) videoRef.current.srcObject = stream;
+      } catch {
+        if (active) setError("Camera unavailable. Allow camera access on HTTPS or localhost, or upload a photo.");
       }
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode },
-        audio: false,
-      });
-      setStream(mediaStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-      }
-    } catch (err: any) {
-      setError(
-        "CAMERA ACCESS DENIED OR NOT AVAILABLE. PLEASE ALLOW PERMISSION IN YOUR BROWSER."
-      );
     }
-  };
-
-  const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      setStream(null);
-    }
-  };
+    void start();
+    return () => {
+      active = false;
+      stream?.getTracks().forEach((track) => track.stop());
+    };
+  }, [facingMode, retry]);
 
   const capturePhoto = () => {
-    if (!videoRef.current) return;
     const video = videoRef.current;
+    if (!video?.videoWidth) return;
     const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
+    const scale = Math.min(1, 2400 / Math.max(video.videoWidth, video.videoHeight));
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
     canvas.toBlob((blob) => {
-      if (blob) {
-        const file = new File([blob], `camera_capture_${Date.now()}.png`, {
-          type: "image/png",
-        });
-        stopCamera();
-        onCapture(file);
+      if (blob && videoRef.current === video) {
+        onCapture(new File([blob], `camera_capture_${Date.now()}.jpg`, { type: "image/jpeg" }));
       }
-    }, "image/png");
-  };
-
-  const toggleCameraFacing = () => {
-    setFacingMode((prev) => (prev === "user" ? "environment" : "user"));
+    }, "image/jpeg", 0.9);
   };
 
   return (
     <div className={styles.cameraBox}>
       <SectionTag>LIVE CAMERA CAPTURE</SectionTag>
-
-      {error ? (
-        <div className={styles.errorBox}>
+      {error && (
+        <div className={styles.errorBox} role="alert">
           <p>⚠ {error}</p>
-          <Button variant="dark" onClick={startCamera} style={{ marginTop: "12px" }}>
-            RETRY CAMERA
-          </Button>
-        </div>
-      ) : (
-        <div className={styles.videoWrapper}>
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className={styles.video}
-          />
+          <Button variant="dark" onClick={() => setRetry((previous) => previous + 1)}>RETRY CAMERA</Button>
         </div>
       )}
-
+      <div className={styles.videoWrapper} hidden={!!error}>
+        <video ref={videoRef} autoPlay playsInline muted onCanPlay={() => setReady(true)} className={styles.video} />
+      </div>
       <div className={styles.controls}>
-        <Button
-          variant="primary"
-          onClick={capturePhoto}
-          disabled={!stream || !!error}
-        >
-          📷 TAKE PHOTO
+        <Button variant="primary" onClick={capturePhoto} disabled={!ready || !!error}>📷 TAKE PHOTO</Button>
+        <Button variant="outline" onClick={() => setFacingMode((mode) => mode === "user" ? "environment" : "user")}>
+          SWITCH CAMERA
         </Button>
-        <Button variant="outline" onClick={toggleCameraFacing} disabled={!stream}>
-          🔄 SWITCH CAMERA
-        </Button>
-        {onCancel && (
-          <Button variant="dark" onClick={onCancel}>
-            CANCEL
-          </Button>
-        )}
+        {onCancel && <Button variant="dark" onClick={onCancel}>CANCEL</Button>}
       </div>
     </div>
   );

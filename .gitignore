@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local configuration template and obsolete local data
+!.env.example
+/data/store.json

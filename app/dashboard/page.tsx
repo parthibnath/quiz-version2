@@ -1,7 +1,7 @@
 import React from "react";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
-import { findUserById } from "@/lib/store";
+import { getDashboard } from "@/lib/store";
 import { Navbar } from "@/components/Navbar";
 import { Card } from "@/components/Card";
 import { SectionTag } from "@/components/SectionTag";
@@ -19,25 +19,23 @@ export const metadata: Metadata = {
 export default async function DashboardPage() {
   const session = await auth();
 
-  if (!session || !session.user?.email) {
+  if (!session) {
     redirect("/login");
   }
 
-  const user = await findUserById(session.user.id);
-  const profile = user?.profile || {
-    cumulativeScore: 0,
-    sessionsCompleted: [],
-    session11Completed: false,
-    sessionHistory: [],
-  };
-
-  const completedSet = new Set(profile.sessionsCompleted);
+  const { profile, uploads, questionCount, active, completed } = await getDashboard(session.user.id);
+  const completedSet = new Set(profile.sessions_completed);
+  const activeSet = new Set(active.map((attempt) => attempt.session_number));
+  const bestScores = new Map<number, number>();
+  for (const attempt of profile.session_history) {
+    bestScores.set(attempt.sessionNumber, Math.max(bestScores.get(attempt.sessionNumber) ?? 0, attempt.score));
+  }
 
   const sessions = Array.from({ length: 11 }, (_, i) => {
     const sessionNum = i + 1;
     const isSession11 = sessionNum === 11;
     const isCompleted = isSession11
-      ? profile.session11Completed
+      ? profile.session_11_completed
       : completedSet.has(sessionNum);
 
     let isUnlocked = false;
@@ -67,31 +65,29 @@ export default async function DashboardPage() {
         <div className={styles.header}>
           <div>
             <SectionTag>USER PROFILE</SectionTag>
-            <h1>WELCOME, {user?.name.toUpperCase()}</h1>
+            <h1>WELCOME, {(profile.display_name || session.user.name || "LEARNER").toUpperCase()}</h1>
           </div>
-          <Link href="/upload">
-            <Button variant="primary">UPLOAD STUDY MATERIAL</Button>
-          </Link>
+          <Link href="/upload" className={styles.actionLink}>UPLOAD STUDY MATERIAL</Link>
         </div>
 
         {/* Stats Grid */}
         <div className={styles.statsGrid}>
           <Card accent="yellow">
             <div className={styles.statLabel}>CUMULATIVE SCORE</div>
-            <div className={styles.statValue}>{profile.cumulativeScore}</div>
+            <div className={styles.statValue}>{profile.cumulative_score}</div>
           </Card>
           
           <Card accent="cyan">
             <div className={styles.statLabel}>SESSIONS COMPLETED</div>
             <div className={styles.statValue}>
-              {profile.sessionsCompleted.length} / 10
+              {profile.sessions_completed.length} / 10
             </div>
           </Card>
 
-          <Card accent={profile.session11Completed ? "green" : "magenta"}>
+          <Card accent="orange">
             <div className={styles.statLabel}>FINAL TAKEOVER</div>
             <div className={styles.statValue}>
-              {profile.session11Completed ? "COMPLETED" : "LOCKED"}
+              {profile.session_11_completed ? "COMPLETED" : sessions[10].isUnlocked ? "UNLOCKED" : "LOCKED"}
             </div>
           </Card>
         </div>
@@ -99,6 +95,8 @@ export default async function DashboardPage() {
         {/* Sessions Section */}
         <div className={styles.sessionsHeader}>
           <h2>PROGRESSION MAP</h2>
+          <p>{questionCount} QUESTIONS IN YOUR BANK · 50 UNIQUE QUESTIONS PER PRACTICE SESSION</p>
+          {questionCount < 50 && <p>ADD {50 - questionCount} MORE QUESTIONS TO START SESSION 1.</p>}
         </div>
 
         <div className={styles.sessionsGrid}>
@@ -131,17 +129,20 @@ export default async function DashboardPage() {
                   {s.isCompleted ? (
                     <span className={styles.statusCompleted}>✓ COMPLETED</span>
                   ) : s.isUnlocked ? (
-                    <span className={styles.statusUnlocked}>UNLOCKED</span>
+                    <span className={styles.statusUnlocked}>{activeSet.has(s.num) ? "IN PROGRESS" : "UNLOCKED"}</span>
                   ) : (
                     <span className={styles.statusLocked}>🔒 LOCKED</span>
                   )}
                 </p>
 
+                {bestScores.has(s.num) && <p>BEST SCORE: {bestScores.get(s.num)} / {s.questionCount}</p>}
                 <div className={styles.sessionAction}>
                   {s.isUnlocked ? (
                     <StartSessionButton
                       sessionNumber={s.num}
                       isCompleted={s.isCompleted}
+                      isActive={activeSet.has(s.num)}
+                      needsQuestions={s.num === 1 && questionCount < 50 && !activeSet.has(s.num) && !s.isCompleted}
                     />
                   ) : (
                     <Button variant="dark" disabled style={{ width: "100%" }}>
@@ -153,6 +154,31 @@ export default async function DashboardPage() {
             );
           })}
         </div>
+
+        {uploads.length > 0 && (
+          <section className={styles.history}>
+            <h2>RECENT STUDY MATERIAL</h2>
+            <ul>
+              {uploads.map((source) => <li key={source.id}><Link href={`/upload?source=${source.id}`}>{source.file_name}</Link></li>)}
+            </ul>
+          </section>
+        )}
+
+        {completed.length > 0 && (
+          <section className={styles.history}>
+            <h2>RECENT RESULTS</h2>
+            <ul>
+              {completed.map((attempt) => (
+                <li key={attempt.id}>
+                  <Link href={`/results/${attempt.id}`}>
+                    {attempt.session_number === 11 ? "Final Takeover" : `Session ${attempt.session_number}`} · {attempt.score}/{attempt.total}
+                  </Link>
+                  {" · "}<time dateTime={attempt.completed_at}>{attempt.completed_at.slice(0, 10)}</time>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </main>
     </>
   );
