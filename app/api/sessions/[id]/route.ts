@@ -1,52 +1,44 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { getSessionById, getQuestionById, findUserById } from "@/lib/store";
+import { requireUser } from "@/auth";
+import { ApiError, apiError, isUuid, readJson } from "@/lib/api";
+import { getSession, getSessionQuestions, saveAnswer } from "@/lib/store";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const session = await auth();
+type Context = { params: Promise<{ id: string }> };
 
-  if (!session || !session.user?.email) {
-    return NextResponse.json(
-      { error: "UNAUTHORIZED ACCESS. PLEASE LOG IN FIRST." },
-      { status: 401 }
-    );
+export async function GET(_req: Request, { params }: Context) {
+  try {
+    const user = await requireUser();
+    const { id } = await params;
+    if (!isUuid(id)) throw new ApiError(404, "This session could not be found.");
+    const session = await getSession(user.id, id);
+    return Response.json({
+      success: true,
+      sessionId: session.id,
+      sessionNumber: session.session_number,
+      total: session.total,
+      status: session.status,
+      ...(session.status === "completed"
+        ? { score: session.score, incorrectList: session.incorrect_list ?? [] }
+        : { questions: await getSessionQuestions(user.id, session), savedAnswers: session.user_answers }),
+    }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    return apiError(error);
   }
+}
 
-  const user = await findUserById(session.user.id);
-  if (!user) {
-    return NextResponse.json({ error: "USER NOT FOUND." }, { status: 404 });
+export async function PATCH(req: Request, { params }: Context) {
+  try {
+    const user = await requireUser();
+    enforceRateLimit(user.id, "save-answer", 150);
+    const { id } = await params;
+    if (!isUuid(id)) throw new ApiError(404, "This session could not be found.");
+    const { questionId, choice } = await readJson(req);
+    if (!isUuid(questionId) || typeof choice !== "number" || !Number.isInteger(choice) || choice < 0 || choice > 3) {
+      throw new ApiError(400, "Select a valid answer.");
+    }
+    await saveAnswer(user.id, id, questionId, choice);
+    return Response.json({ success: true });
+  } catch (error) {
+    return apiError(error);
   }
-
-  const { id: sessionId } = await params;
-  const sessionItem = await getSessionById(sessionId);
-
-  if (!sessionItem || sessionItem.userId !== user.id) {
-    return NextResponse.json(
-      { error: "SESSION NOT FOUND OR UNAUTHORIZED." },
-      { status: 404 }
-    );
-  }
-
-  // Fetch the immutable question snapshot for this session
-  const questions = (await Promise.all(sessionItem.questionIds.map((qId) => getQuestionById(qId))))
-    .filter((q): q is NonNullable<typeof q> => q !== null)
-    .map((q) => ({
-      id: q.id,
-      questionText: q.questionText,
-      options: q.options,
-    }));
-
-  return NextResponse.json({
-    success: true,
-    sessionId: sessionItem.id,
-    sessionNumber: sessionItem.sessionNumber,
-    total: sessionItem.total,
-    status: sessionItem.status,
-    questions,
-    savedAnswers: sessionItem.userAnswers || {},
-    incorrectList: sessionItem.incorrectList || [],
-  });
 }

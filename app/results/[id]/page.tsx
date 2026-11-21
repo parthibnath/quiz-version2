@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, use } from "react";
-import { Navbar } from "@/components/Navbar";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { SectionTag } from "@/components/SectionTag";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import styles from "../results.module.css";
+import buttonStyles from "@/components/Button.module.css";
 
 interface IncorrectItem {
   questionId: string;
@@ -17,7 +17,7 @@ interface IncorrectItem {
   correctChoiceIndex: number;
   correctChoiceText: string;
   explanation: string;
-  whyUserWasWrong: string;
+  whyUserWasWrong: string | null;
 }
 
 interface ResultsData {
@@ -46,19 +46,10 @@ export default function ResultsPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [retrying, setRetrying] = useState(false);
+
   useEffect(() => {
-    // Try to load cached session results from sessionStorage first
-    const cached = sessionStorage.getItem(`session_results_${sessionId}`);
-    if (cached) {
-      try {
-        setResults(JSON.parse(cached));
-        setLoading(false);
-        return;
-      } catch (e) {
-        // Fallback to fetch
-      }
-    }
-    fetchResults();
+    void fetchResults();
   }, [sessionId]);
 
   const fetchResults = async () => {
@@ -66,14 +57,15 @@ export default function ResultsPage({
     try {
       const res = await fetch(`/api/sessions/${sessionId}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(data.error || "FAILED TO LOAD RESULTS.");
+      if (data.status !== "completed") throw new Error("COMPLETE THIS SESSION TO VIEW ITS RESULTS.");
 
       setResults({
         sessionId: data.sessionId,
         sessionNumber: data.sessionNumber,
-        score: data.score || 0,
+        score: data.score,
         total: data.total,
-        percentage: Math.round(((data.score || 0) / data.total) * 100),
+        percentage: Math.round((data.score / data.total) * 100),
         incorrectList: data.incorrectList || [],
       });
     } catch (err) {
@@ -84,7 +76,9 @@ export default function ResultsPage({
   };
 
   const handleRetrySession = async () => {
-    if (!results) return;
+    if (!results || retrying) return;
+    setRetrying(true);
+    setError(null);
     try {
       const res = await fetch("/api/sessions/start", {
         method: "POST",
@@ -92,20 +86,17 @@ export default function ResultsPage({
         body: JSON.stringify({ sessionNumber: results.sessionNumber }),
       });
       const data = await res.json();
-      if (res.ok && data.sessionId) {
-        router.push(`/session/${data.sessionId}`);
-      } else {
-        router.push("/dashboard");
-      }
-    } catch (e) {
-      router.push("/dashboard");
+      if (!res.ok || !data.sessionId) throw new Error(data.error || "COULD NOT START ANOTHER ATTEMPT.");
+      router.push(`/session/${data.sessionId}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "COULD NOT START ANOTHER ATTEMPT.");
+      setRetrying(false);
     }
   };
 
   if (loading) {
     return (
       <>
-        <Navbar />
         <main>
           <Card accent="yellow" className={styles.loadingCard}>
             <SectionTag>COMPUTING RESULTS</SectionTag>
@@ -120,13 +111,12 @@ export default function ResultsPage({
   if (!results) {
     return (
       <>
-        <Navbar />
         <main>
           <Card accent="magenta">
             <SectionTag>RESULTS ERROR</SectionTag>
             <h2>{error || "NO RESULTS AVAILABLE FOR THIS SESSION."}</h2>
-            <Link href="/dashboard" style={{ marginTop: "16px", display: "inline-block" }}>
-              <Button variant="dark">RETURN TO DASHBOARD</Button>
+            <Link href="/dashboard" className={`${buttonStyles.button} ${buttonStyles.dark}`} style={{ marginTop: "16px" }}>
+              RETURN TO DASHBOARD
             </Link>
           </Card>
         </main>
@@ -139,7 +129,6 @@ export default function ResultsPage({
 
   return (
     <>
-      <Navbar />
       <main>
         {/* Banner Section */}
         <div className={styles.header}>
@@ -172,13 +161,14 @@ export default function ResultsPage({
           </p>
 
           <div className={styles.actionsGroup}>
-            <Link href="/dashboard">
-              <Button variant="dark">🏠 RETURN TO DASHBOARD</Button>
+            <Link href="/dashboard" className={`${buttonStyles.button} ${buttonStyles.dark}`}>
+              RETURN TO DASHBOARD
             </Link>
-            <Button variant="primary" onClick={handleRetrySession}>
-              🔄 RETRY SESSION
+            <Button variant="primary" onClick={handleRetrySession} disabled={retrying}>
+              {retrying ? "STARTING..." : "RETRY SESSION"}
             </Button>
           </div>
+          {error && <p role="alert">⚠ {error}</p>}
         </Card>
 
         {/* Incorrect Answer Breakdown Section */}

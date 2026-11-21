@@ -59,7 +59,7 @@
 }
 
 .statusCompleted {
-  color: var(--accent-green);
+  color: var(--black);
 }
 
 .statusUnlocked {
@@ -91,4 +91,36 @@
   .sessionsGrid {
     grid-template-columns: 1fr;
   }
+}
+
+.actionLink {
+  display: inline-block;
+  background: var(--accent-yellow);
+  color: var(--black);
+  border: var(--border);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+  padding: var(--space-12) var(--space-16);
+  font-weight: 800;
+}
+
+.history {
+  margin-top: var(--space-48);
+}
+
+.history ul {
+  list-style-position: inside;
+}
+
+.history li {
+  padding-block: var(--space-8);
+  overflow-wrap: anywhere;
+}
+
+.history a {
+  text-decoration: underline;
+}
+
+.header h1 {
+  overflow-wrap: anywhere;
 }

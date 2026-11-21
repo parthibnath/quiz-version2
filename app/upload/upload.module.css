@@ -60,7 +60,8 @@
 }
 
 .dropZone {
-  border: 3px dashed var(--black);
+  border: var(--border);
+  box-shadow: var(--shadow);
   border-radius: var(--border-radius);
   background-color: var(--white);
   padding: var(--space-32);
@@ -69,8 +70,10 @@
   transition: background-color 0.1s ease;
 }
 
-.dropZone:hover {
-  background-color: var(--accent-yellow);
+@media (hover: hover) and (pointer: fine) {
+  .dropZone:hover {
+    background-color: var(--accent-yellow);
+  }
 }
 
 .emptyDropZone {
@@ -104,11 +107,11 @@
 }
 
 .errorBox {
-  background-color: var(--accent-magenta);
-  color: var(--white);
+  background-color: var(--accent-yellow);
+  color: var(--black);
   border: var(--border);
   border-radius: var(--border-radius);
-  padding: var(--space-20);
+  padding: var(--space-16);
   font-weight: 700;
   text-transform: uppercase;
   margin-bottom: var(--space-24);
@@ -193,4 +196,15 @@
   .tabContainer {
     flex-direction: column;
   }
+}
+
+.dropZone {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+
+.fileSize {
+  display: block;
 }

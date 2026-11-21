@@ -65,7 +65,7 @@
   color: var(--black);
   border: var(--border);
   border-radius: var(--border-radius);
-  padding: var(--space-16) var(--space-20);
+  padding: var(--space-16) var(--space-16);
   font-family: var(--font-body);
   font-size: 16px;
   font-weight: 700;
@@ -97,6 +97,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  flex: 0 0 32px;
   width: 32px;
   height: 32px;
   background-color: var(--black);
@@ -107,6 +108,8 @@
 
 .optionText {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .checkMark {
@@ -125,6 +128,7 @@
 
 .navControls {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: var(--space-16);
 }
@@ -147,7 +151,7 @@
   color: var(--white);
   border: var(--border);
   border-radius: var(--border-radius);
-  padding: var(--space-20);
+  padding: var(--space-16);
   font-weight: 700;
   text-transform: uppercase;
 }

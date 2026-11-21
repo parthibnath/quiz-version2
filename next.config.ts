@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["better-sqlite3"],
+  serverExternalPackages: ["pdf-parse", "tesseract.js", "sharp"],
+  outputFileTracingIncludes: {
+    "/api/extract": ["./eng.traineddata", "./node_modules/tesseract.js-core/**/*"],
+  },
   async headers() {
     return [
       {
